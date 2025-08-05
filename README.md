@@ -14,5 +14,9 @@ python FL_train.py --alg fedrot-local --model resnet18 --dataset RS-5 --noise_ra
 ```
 More settings can be found in  `args.py`.
 
+## Scalability on Diverse Model Architectures
+
+![scale](./model_scale.png)
+
 ## Acknowledgments
 We sincerely appreciate the authors of the FedRS datasets, and more information can be found in the [FedRS](https://fedrs-bench.github.io/).
