@@ -1,0 +1,4 @@
+# pot
+scikit-learn
+matplotlib>=3.3.0
+seaborn>=0.11.0
