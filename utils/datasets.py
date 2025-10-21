@@ -160,19 +160,31 @@ class ImageFolder_SingleDatasetTIF(DatasetFolder):
         # Use the custom find_classes method
         classes, class_to_idx = self.find_classes(client_root)
 
-        imagefolder_obj = ImageFolder(client_root, transform=self.transform, target_transform=self.target_transform,allow_empty=True)
+        # 手动遍历以允许空目录：仅收集存在的图片文件
+        def has_allowed_extension(filename, extensions):
+            return filename.lower().endswith(extensions)
 
-        # Update class mapping
-        imagefolder_obj.class_to_idx = class_to_idx
+        def pil_loader(path):
+            with open(path, 'rb') as f:
+                img = Image.open(f)
+                return img.convert('RGB')
 
-        # Modify samples to use custom labels
-        self.samples = [
-            (path, class_to_idx[classes[original_label]])
-            for path, original_label in imagefolder_obj.samples
-        ]
+        samples = []
+        for class_name in classes:
+            if class_name not in class_to_idx:
+                continue
+            target = class_to_idx[class_name]
+            class_dir = os.path.join(client_root, class_name)
+            if not os.path.isdir(class_dir):
+                continue
+            for root_dir, _, fnames in os.walk(class_dir):
+                for fname in sorted(fnames):
+                    if has_allowed_extension(fname, IMG_EXTENSIONS):
+                        path = os.path.join(root_dir, fname)
+                        samples.append((path, target))
 
-        # Store updated information
-        self.loader = imagefolder_obj.loader
+        self.samples = samples
+        self.loader = pil_loader
         self.class_to_idx = class_to_idx
         self.classes = classes
 

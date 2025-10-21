@@ -7,7 +7,7 @@ from algorithms.symmetricCE import SCELoss
 from sklearn.mixture import GaussianMixture
 
 
-def train_net_fedot_local(net, train_dataloader, epochs, args, device):
+def train_net_fedrom_local(net, train_dataloader, epochs, args, device):
     """Local training function that does not rely on global class centers, only computes OT loss locally"""
     net.cuda()
     net.train()
@@ -105,8 +105,6 @@ def train_net_fedot_local(net, train_dataloader, epochs, args, device):
             else:
                 ot_loss_val = torch.tensor(0.0, device=out.device, requires_grad=True)
             
-
-            
             loss = clean_loss + lambda_ot * ot_loss_val 
             if torch.isnan(loss):
                 print('[NaN Warning] loss is NaN! Skipping backward.')
@@ -130,8 +128,8 @@ def center_separation_loss(class_centers):
     return -separation.sum() / mask.sum()
 
 
-def fedrot_local_alg(args, n_comm_rounds, nets, global_model, party_list_rounds, net_dataidx_map, train_local_dls, test_dl, traindata_cls_counts, moment_v, device, global_dist, logger):
-    """FedROT-Local algorithm main function, does not transmit global class centers, only computes OT loss locally"""
+def fedrom_local_alg(args, n_comm_rounds, nets, global_model, party_list_rounds, net_dataidx_map, train_local_dls, test_dl, traindata_cls_counts, moment_v, device, global_dist, logger):
+    """FedROM-Local algorithm main function, does not transmit global class centers, only computes OT loss locally"""
     best_test_acc = 0
     best_f1 = 0
     best_precision = 0
@@ -147,7 +145,7 @@ def fedrot_local_alg(args, n_comm_rounds, nets, global_model, party_list_rounds,
     # Warmup phase
     warmup_rounds = getattr(args, 'fedot_warmup', 5)
     for round in range(warmup_rounds):
-        logger.info(f"FedROT-Local Warmup round {round}")
+        logger.info(f"FedROM-Local Warmup round {round}")
         party_list_this_round = party_list_rounds[round]
         nets_this_round = {k: nets[k] for k in party_list_this_round}
         global_w = global_model.state_dict()
@@ -200,29 +198,23 @@ def fedrot_local_alg(args, n_comm_rounds, nets, global_model, party_list_rounds,
         global_model.to('cpu')
         
         # Update best results
-        if test_acc > best_test_acc:
-            best_test_acc = test_acc
-        if f1 > best_f1:
-            best_f1 = f1
-        if precision > best_precision:
-            best_precision = precision
-        if recall > best_recall:
-            best_recall = recall
-        if avg_loss < best_loss:
-            best_loss = avg_loss
+        best_test_acc = max(best_test_acc, test_acc)
+        best_f1 = max(best_f1, f1)
+        best_precision = max(best_precision, precision)
+        best_recall = max(best_recall, recall)
+        best_loss = min(best_loss, avg_loss)
         
-        # Print current round and best results
         logger.info(f'Round {round}: Acc={test_acc:.4f}, F1={f1:.4f}, Precision={precision:.4f}, Recall={recall:.4f}, Loss={avg_loss:.4f}')
         logger.info(f'Best so far: Acc={best_test_acc:.4f}, F1={best_f1:.4f}, Precision={best_precision:.4f}, Recall={best_recall:.4f}, Loss={best_loss:.4f}\n')
         print(f'Round {round}: Acc={test_acc:.4f}, F1={f1:.4f}, Precision={precision:.4f}, Recall={recall:.4f}, Loss={avg_loss:.4f}')
         print(f'Best so far: Acc={best_test_acc:.4f}, F1={best_f1:.4f}, Precision={best_precision:.4f}, Recall={best_recall:.4f}, Loss={best_loss:.4f}\n')
     
-    print("#####  warmup_stage ends, fedrot-local stage starts #####")
-    logger.info("#####  warmup_stage ends, fedrot-local stage starts #####")
+    print("#####  warmup_stage ends, fedrom-local stage starts #####")
+    logger.info("#####  warmup_stage ends, fedrom-local stage starts #####")
     
-    # FedROT-Local main process
+    # FedROM-Local main process
     for round in range(warmup_rounds, n_comm_rounds):
-        logger.info(f"FedROT-Local Round {round}")
+        logger.info(f"FedROM-Local Round {round}")
         party_list_this_round = party_list_rounds[round]
         nets_this_round = {k: nets[k] for k in party_list_this_round}
         global_w = global_model.state_dict()
@@ -230,13 +222,12 @@ def fedrot_local_alg(args, n_comm_rounds, nets, global_model, party_list_rounds,
         for net in nets_this_round.values():
             net.load_state_dict(global_w)
         
-        # Client local training (does not rely on global class centers)
+        # Client local training
         for net_id, net in nets_this_round.items():
             train_dl_local = train_local_dls[net_id]
-            # Use local OT training, no transmission of global class centers
-            train_net_fedot_local(net, train_dl_local, args.epochs, args, device)
+            train_net_fedrom_local(net, train_dl_local, args.epochs, args, device)
         
-        # Aggregation (no class center transmission involved)
+        # Aggregation
         total_data_points = sum([len(net_dataidx_map[r]) for r in party_list_this_round])
         fed_avg_freqs = [len(net_dataidx_map[r]) / total_data_points for r in party_list_this_round]
         global_w = None
@@ -260,18 +251,12 @@ def fedrot_local_alg(args, n_comm_rounds, nets, global_model, party_list_rounds,
         global_model.to('cpu')
         
         # Update best results
-        if test_acc > best_test_acc:
-            best_test_acc = test_acc
-        if f1 > best_f1:
-            best_f1 = f1
-        if precision > best_precision:
-            best_precision = precision
-        if recall > best_recall:
-            best_recall = recall
-        if avg_loss < best_loss:
-            best_loss = avg_loss
+        best_test_acc = max(best_test_acc, test_acc)
+        best_f1 = max(best_f1, f1)
+        best_precision = max(best_precision, precision)
+        best_recall = max(best_recall, recall)
+        best_loss = min(best_loss, avg_loss)
         
-        # Print current round and best results
         logger.info(f'Round {round}: Acc={test_acc:.4f}, F1={f1:.4f}, Precision={precision:.4f}, Recall={recall:.4f}, Loss={avg_loss:.4f}')
         logger.info(f'Best so far: Acc={best_test_acc:.4f}, F1={best_f1:.4f}, Precision={best_precision:.4f}, Recall={best_recall:.4f}, Loss={best_loss:.4f}\n')
         print(f'Round {round}: Acc={test_acc:.4f}, F1={f1:.4f}, Precision={precision:.4f}, Recall={recall:.4f}, Loss={avg_loss:.4f}')
@@ -292,3 +277,5 @@ def fedrot_local_alg(args, n_comm_rounds, nets, global_model, party_list_rounds,
     logger.info(f'Last 10 rounds average: Acc={avg_acc:.4f}, F1={avg_f1:.4f}, Precision={avg_precision:.4f}, Recall={avg_recall:.4f}, Loss={avg_loss:.4f}')
     
     return record_test_acc_list, best_test_acc
+
+
