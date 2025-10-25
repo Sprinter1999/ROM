@@ -15,6 +15,7 @@ from utils.utils import *
 from algorithms.fedrom_local import fedrom_local_alg
 from algorithms.fedrom import fedrom_alg
 from algorithms.fedrom_dist import fedrom_dist_alg
+from algorithms.fedrom_stats import fedrom_alg_with_stats
 
 
 if __name__ == '__main__':
@@ -231,6 +232,10 @@ if __name__ == '__main__':
     elif args.alg == 'fedrom':
         print("--- [ours] FEDROM (dual-GMM) ---\n")
         record_test_acc_list, best_test_acc = fedrom_alg(args, n_comm_rounds, nets, global_model, party_list_rounds, net_dataidx_map, train_local_dls, test_dl, traindata_cls_counts, moment_v, device, global_dist, logger)
+    
+    elif args.alg == 'fedrom-stats':
+        print("--- [ours] FEDROM with Statistics (dual-GMM + clustering stats) ---\n")
+        record_test_acc_list, best_test_acc = fedrom_alg_with_stats(args, n_comm_rounds, nets, global_model, party_list_rounds, net_dataidx_map, train_local_dls, test_dl, traindata_cls_counts, moment_v, device, global_dist, logger)
     
     elif args.alg == 'fedrom-dist':
         print("--- [ours] FEDROM-Dist (distance-only) ---\n")
