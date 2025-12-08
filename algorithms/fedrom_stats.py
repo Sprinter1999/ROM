@@ -151,7 +151,9 @@ def fedrom_alg_with_stats(args, n_comm_rounds, nets, global_model, party_list_ro
         'loss_gmm_samples': [],
         'center_gmm_samples': [],
         'intersection_samples': [],
-        'total_samples': []
+        'total_samples': [],
+        # 新增：按客户端记录每轮的比例与数量，便于稳定性分析
+        'per_client': []  # 元素形如 {'round': r, 'clients': {cid: {...}}}
     }
 
     warmup_rounds = getattr(args, 'fedot_warmup', 5)
@@ -218,6 +220,7 @@ def fedrom_alg_with_stats(args, n_comm_rounds, nets, global_model, party_list_ro
             'total_samples': 0
         }
         
+        per_client_stats = {}
         for net_id, net in nets_this_round.items():
             train_dl_local = train_local_dls[net_id]
             client_stats = train_net_fedrom_with_stats(net, train_dl_local, args.epochs, args, device, client_id=net_id)
@@ -225,6 +228,29 @@ def fedrom_alg_with_stats(args, n_comm_rounds, nets, global_model, party_list_ro
             # 累加统计信息
             for key in round_stats:
                 round_stats[key] += client_stats[key]
+            
+            # 记录该客户端的比例，便于观察筛选稳定性
+            total = client_stats['total_samples']
+            if total > 0:
+                per_client_stats[net_id] = {
+                    'loss_gmm_samples': client_stats['loss_gmm_samples'],
+                    'center_gmm_samples': client_stats['center_gmm_samples'],
+                    'intersection_samples': client_stats['intersection_samples'],
+                    'total_samples': total,
+                    'loss_gmm_ratio': client_stats['loss_gmm_samples'] / total,
+                    'center_gmm_ratio': client_stats['center_gmm_samples'] / total,
+                    'intersection_ratio': client_stats['intersection_samples'] / total,
+                }
+            else:
+                per_client_stats[net_id] = {
+                    'loss_gmm_samples': 0,
+                    'center_gmm_samples': 0,
+                    'intersection_samples': 0,
+                    'total_samples': 0,
+                    'loss_gmm_ratio': 0.0,
+                    'center_gmm_ratio': 0.0,
+                    'intersection_ratio': 0.0,
+                }
         
         # 计算平均比例
         if round_stats['total_samples'] > 0:
@@ -241,6 +267,7 @@ def fedrom_alg_with_stats(args, n_comm_rounds, nets, global_model, party_list_ro
             clustering_stats['center_gmm_samples'].append(round_stats['center_gmm_samples'])
             clustering_stats['intersection_samples'].append(round_stats['intersection_samples'])
             clustering_stats['total_samples'].append(round_stats['total_samples'])
+            clustering_stats['per_client'].append({'round': round, 'clients': per_client_stats})
             
             # 输出聚类统计信息
             stats_msg = (f"FedROM Round {round} 聚类统计:\n"
@@ -250,6 +277,15 @@ def fedrom_alg_with_stats(args, n_comm_rounds, nets, global_model, party_list_ro
             
             logger.info(stats_msg)
             print(stats_msg)
+            
+            # 输出本轮各客户端的比例，便于观察稳定性
+            per_client_lines = [f"  Client {cid}: loss={vals['loss_gmm_ratio']:.4f} ({vals['loss_gmm_samples']}/{vals['total_samples']}), "
+                                f"center={vals['center_gmm_ratio']:.4f} ({vals['center_gmm_samples']}/{vals['total_samples']}), "
+                                f"inter={vals['intersection_ratio']:.4f} ({vals['intersection_samples']}/{vals['total_samples']})"
+                                for cid, vals in per_client_stats.items()]
+            per_client_msg = "FedROM Round {} 客户端筛选比例:\n".format(round) + "\n".join(per_client_lines)
+            logger.info(per_client_msg)
+            print(per_client_msg)
         
         # 聚合模型
         total_data_points = sum([len(net_dataidx_map[r]) for r in party_list_this_round])
@@ -330,6 +366,43 @@ def fedrom_alg_with_stats(args, n_comm_rounds, nets, global_model, party_list_ro
         
         logger.info(summary_msg)
         print(summary_msg)
+
+        # 追加：输出各客户端在全程的累计比例，便于观察稳定性
+        per_client_summary = {}
+        for entry in clustering_stats['per_client']:
+            for cid, vals in entry['clients'].items():
+                if cid not in per_client_summary:
+                    per_client_summary[cid] = {
+                        'loss_gmm_samples': 0,
+                        'center_gmm_samples': 0,
+                        'intersection_samples': 0,
+                        'total_samples': 0
+                    }
+                per_client_summary[cid]['loss_gmm_samples'] += vals['loss_gmm_samples']
+                per_client_summary[cid]['center_gmm_samples'] += vals['center_gmm_samples']
+                per_client_summary[cid]['intersection_samples'] += vals['intersection_samples']
+                per_client_summary[cid]['total_samples'] += vals['total_samples']
+
+        # 生成输出行
+        per_client_lines = []
+        for cid in sorted(per_client_summary.keys()):
+            s = per_client_summary[cid]
+            total = s['total_samples']
+            if total > 0:
+                loss_ratio = s['loss_gmm_samples'] / total
+                center_ratio = s['center_gmm_samples'] / total
+                inter_ratio = s['intersection_samples'] / total
+            else:
+                loss_ratio = center_ratio = inter_ratio = 0.0
+            per_client_lines.append(
+                f"  Client {cid}: loss={loss_ratio:.4f} ({s['loss_gmm_samples']}/{total}), "
+                f"center={center_ratio:.4f} ({s['center_gmm_samples']}/{total}), "
+                f"inter={inter_ratio:.4f} ({s['intersection_samples']}/{total})"
+            )
+
+        per_client_summary_msg = "各客户端累计筛选比例:\n" + "\n".join(per_client_lines)
+        logger.info(per_client_summary_msg)
+        print(per_client_summary_msg)
         
         logger.info("=" * 80)
         print("=" * 80)
