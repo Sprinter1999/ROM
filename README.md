@@ -13,7 +13,7 @@
 
 ## Abstract
 
-This repository contains the implementation of our paper "Representation Optimal Matching for Robust Federated Learning with Noisy Labels in Remote Sensing". We introduce FedROM, a novel federated learning framework that addresses label noise in distributed remote sensing tasks without requiring auxiliary data or transmitting extra sensitive information. The full paper will be coming soon.
+This repository contains the implementation of our paper "Representation Optimal Matching for Robust Federated Learning with Noisy Labels in Remote Sensing". We introduce FedROM, a novel federated learning framework that addresses label noise in distributed remote sensing tasks without requiring auxiliary data or transmitting extra sensitive information. The full paper (early access) is available [here](https://ieeexplore.ieee.org/document/11318964).
 
 ## Installation
 
